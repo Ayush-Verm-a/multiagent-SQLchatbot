@@ -4,4 +4,7 @@ version = "0.1.0"
 description = "Multi_agent_sql_chatbot_app"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "fastapi>=0.141.1",
+    "uvicorn[standard]>=0.54.0",
+]
