@@ -1,31 +1,27 @@
-from fastapi import FastAPI
-from contextlib import asynccontextmanager
-from routes import (health_router)
+from services import session_service, runner
+from google.genai import types
+import asyncio
 
-@asynccontextmanager    
-async def lifespan(app: FastAPI):
-    # Perform any startup tasks here
-    print("Starting up the NL to SQL Chatbot API server...")
-    yield
-    # Perform any shutdown tasks here
-    print("Shutting down the NL to SQL Chatbot API server...")
-
-app = FastAPI(
-    title="NL to SQL Chatbot API",
-    description="An API that converts natural language queries into SQL queries using a chatbot interface.",
-    version="1.0.0",
-    lifespan=lifespan
-)
-
-app.include_router(health_router)
-
-@app.get("/")
-def root():
-    return {
-        "message": "NL to SQL Chatbot API",
-        "version": "1.0.0"
-    }
-
+async def test_greeting_agent():
+    session = await session_service.create_session(
+        app_name="sql_chatbot",
+        user_id="test_user",
+        session_id=None
+    )
+    
+    user_message = types.UserContent("Hi, I want to use this SQL Chatbot")
+    
+    async for event in runner.run_async(
+        user_id="test_user",
+        session_id=session.id,
+        new_message=user_message
+    ):
+        if event.is_final_response():
+            print("Agent Response:\n")
+            if event.content and event.content.parts:
+                print(event.content.parts[0].text)
+            else:
+                print("[WARN] Final event has no content")
+                
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
+    asyncio.run(test_greeting_agent())
