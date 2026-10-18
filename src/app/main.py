@@ -1,27 +1,82 @@
-from services import session_service, runner
-from google.genai import types
-import asyncio
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
-async def test_greeting_agent():
-    session = await session_service.create_session(
-        app_name="sql_chatbot",
-        user_id="test_user",
-        session_id=None
-    )
+from routes import chat_router, schema_router, health_router, file_manager_router
+
+# Load environment variables
+
+# Configure API key
+def configure_api_key():
+    """Configure Google API key from environment variables."""
+    api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+    if api_key:
+        os.environ["GOOGLE_API_KEY"] = api_key
+        os.environ["GEMINI_API_KEY"] = api_key
+        return True
+    else:
+        return False
+
+# Initialize API key configuration
+configure_api_key()
+
+# Create FastAPI app
+app = FastAPI(
+    title="SQL ChatBot API",
+    description="AI-powered SQL Chatbot using Google ADK",
+    version="1.0.0"
+)
+
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:4200", "http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Include routers
+app.include_router(chat_router)
+app.include_router(schema_router)
+app.include_router(file_manager_router)
+app.include_router(health_router)
+
+# Configure file uploads directory
+UPLOADS_DIR = Path("uploads")
+UPLOADS_DIR.mkdir(exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Application startup event."""
     
-    user_message = types.UserContent("Hi, I want to use this SQL Chatbot")
+    # Check for existing files on startup
+    from routes import file_manager
+    file_manager.check_file_on_startup()
     
-    async for event in runner.run_async(
-        user_id="test_user",
-        session_id=session.id,
-        new_message=user_message
-    ):
-        if event.is_final_response():
-            print("Agent Response:\n")
-            if event.content and event.content.parts:
-                print(event.content.parts[0].text)
-            else:
-                print("[WARN] Final event has no content")
-                
+    configure_api_key()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Application shutdown event."""
+
+
+@app.get("/")
+async def root():
+    """Root endpoint."""
+    return {"message": "SQL ChatBot API", "version": "1.0.0"}
+
+
 if __name__ == "__main__":
-    asyncio.run(test_greeting_agent())
+    import uvicorn
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True
+    )

@@ -12,4 +12,6 @@ wheels/
 # Environment variables
 .env
 
+uploads/
+schemas/
 proj_docs/
