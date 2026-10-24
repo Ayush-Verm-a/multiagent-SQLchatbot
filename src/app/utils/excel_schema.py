@@ -137,7 +137,7 @@ def generate_schema(file_path):
         total_columns = 0
         
         for sheet_name, df in sheets_data.items():
-            df.columns = df.columns.str.strip().str.replace(" ", "_", regex=False)  # Strip extra whitespace from column names and extra space with underscores
+            df.columns = df.columns.str.strip().str.replace(r"\s+", "_", regex=True)  # Collapse any whitespace (incl. wrapped-header newlines) to underscores
             
             columns = []
             

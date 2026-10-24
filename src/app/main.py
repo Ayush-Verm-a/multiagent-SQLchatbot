@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from routes import chat_router, schema_router, health_router, file_manager_router
 
 # Load environment variables
+load_dotenv()
 
 # Configure API key
 def configure_api_key():
@@ -33,7 +34,7 @@ app = FastAPI(
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:4200", "http://localhost:3000"],
+    allow_origins=["http://localhost:5173", "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

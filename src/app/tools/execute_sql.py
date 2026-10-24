@@ -78,7 +78,7 @@ def execute_sql(query: str) -> str:
         
         for sheet_name, df in sheets_data.items():
             # Clean column names (remove extra spaces, replace spaces with underscores)
-            df.columns = df.columns.str.strip().str.replace(' ', '_', regex=False)
+            df.columns = df.columns.str.strip().str.replace(r'\s+', '_', regex=True)
             
             # Write DataFrame to SQLite
             df.to_sql(sheet_name, conn, index=False, if_exists='replace')

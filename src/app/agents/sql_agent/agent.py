@@ -4,8 +4,8 @@ from google.adk.agents import SequentialAgent
 from .prompt import name, description
 
 # Import sub-agents - must import from .agent module, not from parent package
-from inputValidationAndSqlGeneration_agent.agent import inputValidationAndSqlGeneration_agent
-from sqlValidatorAndSqlExecutor_agent.agent import sqlValidatorAndSqlExecutor_agent
+from ..inputValidationAndSqlGeneration_agent.agent import inputValidationAndSqlGeneration_agent
+from ..sqlValidatorAndSqlExecutor_agent.agent import sqlValidatorAndSqlExecutor_agent
 
 sql_agent = SequentialAgent(
     name=name,
