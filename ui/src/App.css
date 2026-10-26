@@ -1,0 +1,21 @@
+.idle {
+    background-color: yellow;
+}
+
+.success {
+    background-color: lightgreen;
+}
+
+.error {
+    background-color: red;
+}
+
+.uploading {
+    background-color: orange;
+}
+
+.chatbox {
+    margin: 20px;
+    padding: 20px;
+    border: 1px solid black;
+}
