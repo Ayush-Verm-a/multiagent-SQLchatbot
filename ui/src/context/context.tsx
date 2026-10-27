@@ -1,9 +1,13 @@
 import { createContext, useContext, useState, type ReactNode, type Dispatch, type SetStateAction } from "react";
 
 export type ChatItem = {
+    id: string;
     chatSender: "bot" | "user" | "error";
     msgType: "query" | "sql_response" | "greeting_response" | "error_response";
     chatMsg: string;
+    queryResult?: string | null;
+    sqlQuery?: string | null;
+    error?: string | null;
 }
 
 export type ChatList = ChatItem[]
@@ -33,12 +37,12 @@ export type FileSchema = {
 }
 
 interface GlobalContextType {
-    file: File | null;
-    setFile: Dispatch<SetStateAction<File | null>>;
     fileSchema: FileSchema | null;
     setFileSchema: Dispatch<SetStateAction<FileSchema | null>>;
     chatList: ChatList;
     setChatList: Dispatch<SetStateAction<ChatList>>;
+    sessionId: string | null;
+    setSessionId: Dispatch<SetStateAction<string | null>>;
 }
 
 const GlobalContext = createContext<GlobalContextType | undefined>(undefined);
@@ -56,12 +60,12 @@ interface AppContextProps {
 }
 
 const AppContext = ({children}: AppContextProps) => {
-    const [file, setFile] = useState<File | null>(null);
     const [fileSchema, setFileSchema] = useState<FileSchema | null>(null);
     const [chatList, setChatList] = useState<ChatList>([]);
+    const [sessionId, setSessionId] = useState<string | null>(null);
 
     return (
-        <GlobalContext.Provider value={{file, setFile, fileSchema, setFileSchema, chatList, setChatList}}>
+        <GlobalContext.Provider value={{fileSchema, setFileSchema, chatList, setChatList, sessionId, setSessionId}}>
             {children}
         </GlobalContext.Provider>
     )
