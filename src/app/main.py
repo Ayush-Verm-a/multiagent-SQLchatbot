@@ -13,10 +13,8 @@ load_dotenv()
 # Configure API key
 def configure_api_key():
     """Configure Google API key from environment variables."""
-    api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+    api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("OPENAI_API_KEY")
     if api_key:
-        os.environ["GOOGLE_API_KEY"] = api_key
-        os.environ["GEMINI_API_KEY"] = api_key
         return True
     else:
         return False

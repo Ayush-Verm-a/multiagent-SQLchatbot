@@ -7,8 +7,11 @@ from .prompt import name, description, instruction
 from ..greeting_agent.agent import greeting_agent
 from ..sql_agent.agent import sql_agent
 
+from google.adk.models.lite_llm import LiteLlm
+import os
+
 orchestrator_agent = LlmAgent(
-    model="gemini-2.5-flash",
+    model=LiteLlm(model=os.environ["MODEL"]),
     name=name,
     description=description,
     instruction=instruction,

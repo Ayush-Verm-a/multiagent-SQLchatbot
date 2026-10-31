@@ -51,8 +51,8 @@ export function getErrorMessage(error: unknown): string {
 }
 
 export function toChatItem(response: ChatResponse): ChatItem {
-    if (response.generic) {
-        return { id: newId(), chatSender: "bot", msgType: "greeting_response", chatMsg: response.generic };
+    if (response.explanation && !response.query_result) {
+        return { id: newId(), chatSender: "bot", msgType: "greeting_response", chatMsg: response.explanation };
     }
 
     // The chat route returns only {"error": ...} when it rejects the request outright
