@@ -10,21 +10,6 @@ def execute_sql(query: str) -> str:
     
     This function loads data from an Excel or CSV file into an in-memory SQLite database,
     executes the provided SQL query, and returns the results as a JSON string.
-    
-    The function automatically finds the uploaded file in the uploads directory.
-    
-    Args:
-        query (str): The SQL query to execute (should be a SELECT statement)
-        
-    Returns:
-        str: JSON string containing the query results with the following structure:
-             {
-                 "success": bool,
-                 "data": List[Dict[str, Any]],  # List of rows as dictionaries
-                 "row_count": int,
-                 "columns": List[str],
-                 "error": str (only if success is False)
-             }
     """
     
     try:
@@ -37,7 +22,8 @@ def execute_sql(query: str) -> str:
             
             if valid_files:
                 # Use the most recent file
-                file_path = str(max(valid_files, key=lambda f: f.stat().st_mtime))
+                latest_file = max(valid_files, key=lambda f: f.stat().st_mtime)
+                file_path = str(latest_file)
             else:
                 error_msg = "No Excel/CSV file found in uploads directory"
                 return json.dumps({
@@ -135,9 +121,3 @@ def execute_sql(query: str) -> str:
             "row_count": 0,
             "columns": []
         })
-        
-# if __name__ == "__main__":
-#     test_query = "SELECT * FROM `Inventory Records Data` LIMIT 5"
-    
-#     result = execute_sql(test_query)
-#     print(result)

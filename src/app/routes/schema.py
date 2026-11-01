@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from pathlib import Path
 from utils.excel_schema import generate_schema, get_schema_summary
+from .file_manager import CURRENT_FILE_ID, CURRENT_SCHEMA, UPLOAD_DIR
 
 router = APIRouter(prefix="/api/schema", tags=["schema"])
 
@@ -16,8 +17,6 @@ async def get_schema():
     """
 
     try:
-        from .file_manager import CURRENT_FILE_ID, CURRENT_SCHEMA, UPLOAD_DIR
-        
         if not CURRENT_FILE_ID:
             raise HTTPException(status_code=404, detail="No file uploaded")
         

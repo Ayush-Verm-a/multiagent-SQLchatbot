@@ -15,6 +15,9 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 SCHEMA_DIR = Path("schemas")
 SCHEMA_DIR.mkdir(exist_ok=True)
 
+METADATA_DIR = Path("metadata")
+METADATA_DIR.mkdir(exist_ok=True)
+
 CURRENT_FILE_ID: Optional[str] = None
 CURRENT_FILENAME: Optional[str] = None
 CURRENT_SCHEMA: Optional[dict] = None
@@ -42,12 +45,22 @@ def check_file_on_startup():
         latest_file = files[0]
     
     # Load file metadata
-    file_id = latest_file.stem
-    CURRENT_FILE_ID = file_id
-    CURRENT_FILENAME = latest_file.name
+    CURRENT_FILE_ID = latest_file.stem
+    
+    
+    metadata_file = METADATA_DIR / f"{CURRENT_FILE_ID}.json"
+    if metadata_file.exists():
+        try:
+            with open(metadata_file, "r", encoding="utf-8") as f:
+                metadata = json.load(f)
+                CURRENT_FILENAME = metadata.get("original_filename", latest_file.name)
+        except Exception as e:
+            CURRENT_FILENAME = latest_file.name
+    else:
+        CURRENT_FILENAME = latest_file.name
     
     # Load cached schema if exists
-    schema_file = SCHEMA_DIR / f"{file_id}.json"
+    schema_file = SCHEMA_DIR / f"{CURRENT_FILE_ID}.json"
     if schema_file.exists():
         try:
             with open(schema_file, 'r', encoding='utf-8') as f:
@@ -71,22 +84,23 @@ async def upload_file(file: UploadFile = File(...)):
         
         old_files = list(UPLOAD_DIR.glob("*.*"))
         old_schemas = list(SCHEMA_DIR.glob("*.json"))
+        old_metadata = list(METADATA_DIR.glob("*.json"))
         
-        if old_files or old_schemas:
+        if old_files or old_schemas or old_metadata:
             for f in old_files:
                 f.unlink()
                 
             for s in old_schemas:
                 s.unlink()
                 
+            for m in old_metadata:
+                m.unlink()
+                
         file_id = str(uuid.uuid4())
         file_path = UPLOAD_DIR / f"{file_id}{file_ext}"
         
         with open(file_path, "wb") as f:
-            while True:
-                chunk = await file.read(8192)
-                if not chunk:
-                    break
+            while chunk := await file.read(8192):
                 f.write(chunk)
                 
         # Generate schema and schema summary
@@ -97,6 +111,15 @@ async def upload_file(file: UploadFile = File(...)):
         schema_file = SCHEMA_DIR / f"{file_id}.json"
         with open(schema_file, "w", encoding="utf-8") as f:
             json.dump(schema, f, indent=2)
+            
+        metadata = {
+            "original_filename": file.filename,
+            "file_id": file_id,
+            "uploaded_at": str(Path(file_path).stat().st_mtime)
+        }
+        metadata_file = METADATA_DIR / f"{file_id}.json"
+        with open(metadata_file, "w", encoding="utf-8") as f:
+            json.dump(metadata, f, indent=2)
             
         CURRENT_FILE_ID = file_id
         CURRENT_FILENAME = file.filename
@@ -144,13 +167,18 @@ async def delete_file():
         deleted_id = CURRENT_FILE_ID
         
         # Remove file
-        for f in UPLOAD_DIR.glob(f"{CURRENT_FILE_ID}.*"):
+        for f in UPLOAD_DIR.glob(f"{deleted_id}.*"):
             f.unlink()
         
         # Remove cached schema
-        schema_file = SCHEMA_DIR / f"{CURRENT_FILE_ID}.json"
+        schema_file = SCHEMA_DIR / f"{deleted_id}.json"
         if schema_file.exists():
             schema_file.unlink()
+            
+        # Remove metadata
+        metadata_file = METADATA_DIR /f"{deleted_file}.json"
+        if metadata_file.exists():
+            metadata_file.unlink()
 
 
         # Clear global state

@@ -9,7 +9,7 @@ def read_excel_file(file_path: str) -> Dict[str, pd.DataFrame]:
     file_ext = file_path_obj.suffix.lower()
     
     if file_ext == ".csv":
-        csv_data = pd.read_csv(file_path, low_memory=False, nrows=None)
+        csv_data = pd.read_csv(file_path, low_memory=False)
         return {"Sheet1": csv_data} # CSV files don't have sheets, so we return a single sheet named "Sheet1"
     elif file_ext in [".xls", ".xlsx"]:
         engine = "openpyxl" if file_ext == ".xlsx" else "xlrd"
@@ -65,9 +65,8 @@ def analyze_column(series: pd.Series, column_name: str) -> Dict[str, Any]:
     is_potential_pk = (unique_count == total_count and null_count == 0 and total_count > 0)
     
     nullable = bool(null_count > 0)
-    is_pk = bool(is_potential_pk)
     
-    sample_values_str = []
+    cleaned_samples = []
     
     for val in sample_values:
         if pd.isna(val):
@@ -76,7 +75,7 @@ def analyze_column(series: pd.Series, column_name: str) -> Dict[str, Any]:
         try:
             if hasattr(val, "item"):
                 val = val.item()
-            sample_values_str.append(str(val))
+            cleaned_samples.append(str(val))
         except (ValueError, TypeError):
             continue
         
@@ -88,8 +87,8 @@ def analyze_column(series: pd.Series, column_name: str) -> Dict[str, Any]:
         "null_percentage": float(round(null_percentage, 2)),
         "unique_count": int(unique_count),
         "total_count": int(total_count),
-        "sample_values": sample_values_str,
-        "is_potential_primary_key": is_pk,
+        "sample_values": cleaned_samples,
+        "is_potential_primary_key": is_potential_pk,
     }
 
 

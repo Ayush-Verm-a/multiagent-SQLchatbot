@@ -5,19 +5,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from routes import chat_router, schema_router, health_router, file_manager_router
-
-# Load environment variables
-load_dotenv()
-
-# Configure API key
-def configure_api_key():
-    """Configure Google API key from environment variables."""
-    api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("OPENAI_API_KEY")
-    if api_key:
-        return True
-    else:
-        return False
+from routes import chat_router, schema_router, health_router, file_manager_router, file_manager
+from config.api_key_config import configure_api_key
 
 # Initialize API key configuration
 configure_api_key()
@@ -55,7 +44,6 @@ async def startup_event():
     """Application startup event."""
     
     # Check for existing files on startup
-    from routes import file_manager
     file_manager.check_file_on_startup()
     
     configure_api_key()
