@@ -1,8 +1,8 @@
 import sqlite3
 import json
-from utils.database_manager import get_db_connection, get_all_table_names
+from src.app.utils.database_manager import get_db_connection, get_all_table_names
 
-def execute_sql(query: str) -> str:
+def execute_sql_query(query: str) -> str:
     """
     Execute a SQL query against Excel/CSV data.
     
@@ -11,7 +11,6 @@ def execute_sql(query: str) -> str:
     """
     
     try:
-        print("Query: ", query)
         tables = get_all_table_names()
         
         if not tables:

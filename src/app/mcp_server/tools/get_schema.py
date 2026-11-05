@@ -1,8 +1,10 @@
 import json
 
-def get_schema() -> str:
+def get_schema_summary() -> str:
     try:
-        from routes.file_manager import FILE_REGISTRY
+        from src.app.utils.shared_registry import get_file_registry_from_disk
+        
+        FILE_REGISTRY = get_file_registry_from_disk()
         
         if not FILE_REGISTRY:
             return json.dumps({

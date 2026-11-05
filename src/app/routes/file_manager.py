@@ -6,7 +6,7 @@ import re
 import uuid
 import json
 
-from utils.excel_schema import generate_schema, get_schema_summary
+from utils.schema_generator import generate_schema, generate_schema_summary
 from utils.database_manager import (
     load_file_to_db,
     remove_table_from_db,
@@ -143,7 +143,7 @@ async def upload_file(file: UploadFile = File(...)):
                 
         # Generate schema and schema summary
         schema = generate_schema(str(file_path))
-        schema_summary = get_schema_summary(schema)
+        schema_summary = generate_schema_summary(schema)
         
         if not schema_summary:
             raise HTTPException(status_code=500, detail="Failed to generate schema summary")

@@ -173,7 +173,7 @@ def generate_schema(file_path: str) -> Dict[str, Any]:
         raise ValueError(f"Error generating schema for file {file_path}: {e}")
     
     
-def get_schema_summary(schema: Dict[str, Any]) -> str:
+def generate_schema_summary(schema: Dict[str, Any]) -> str:
     """
     Generate a summary string from the schema dictionary.
     """

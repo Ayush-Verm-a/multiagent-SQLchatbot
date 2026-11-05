@@ -82,7 +82,8 @@ async def chat(
             "sql_query": parsed["sql_query"],
             "selected_agent": selected_agent,
             "error": parsed["error"],
-            "session_id": session_id
+            "session_id": session_id,
+            "suggestions": parsed.get("suggestions")
         }
         
         

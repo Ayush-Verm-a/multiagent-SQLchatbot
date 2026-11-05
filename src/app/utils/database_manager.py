@@ -3,7 +3,7 @@ import hashlib
 from pathlib import Path
 from typing import Optional, Dict, List, Tuple
 
-from .excel_schema import read_excel_file
+from .schema_generator import read_excel_file
 
 DB_DIR = Path("database")
 DB_FILE = DB_DIR / "chatbot.db"
