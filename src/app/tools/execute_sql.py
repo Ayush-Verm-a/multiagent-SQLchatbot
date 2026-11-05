@@ -1,8 +1,6 @@
 import sqlite3
-import pandas as pd
 import json
-from pathlib import Path
-from utils.excel_schema import read_excel_file
+from utils.database_manager import get_db_connection, get_all_table_names
 
 def execute_sql(query: str) -> str:
     """
@@ -13,29 +11,12 @@ def execute_sql(query: str) -> str:
     """
     
     try:
-        file_path = None
-        upload_dir = Path("uploads")
-        if upload_dir.exists():
-            files = list(upload_dir.glob("*.*"))
-            # Filter for valid Excel/CSV files
-            valid_files = [f for f in files if f.suffix.lower() in ['.xlsx', '.xls', '.csv']]
+        print("Query: ", query)
+        tables = get_all_table_names()
+        
+        if not tables:
+            error_msg = "No table found in database"
             
-            if valid_files:
-                # Use the most recent file
-                latest_file = max(valid_files, key=lambda f: f.stat().st_mtime)
-                file_path = str(latest_file)
-            else:
-                error_msg = "No Excel/CSV file found in uploads directory"
-                return json.dumps({
-                    "success": False,
-                    "error": error_msg,
-                    "data": [],
-                    "row_count": 0,
-                    "columns": []
-                })
-                
-        else:
-            error_msg = "Uploads directory not found"
             return json.dumps({
                 "success": False,
                 "error": error_msg,
@@ -44,30 +25,8 @@ def execute_sql(query: str) -> str:
                 "columns": []
             })
             
-        # Validate file exists
-        file_path_obj = Path(file_path)
-        if not file_path_obj.exists():
-            error_msg = f"File not found: {file_path}"
-            return json.dumps({
-                "success": False,
-                "error": error_msg,
-                "data": [],
-                "row_count": 0,
-                "columns": []
-            })
         
-        # Read the Excel/CSV file
-        sheets_data = read_excel_file(file_path)
-        
-        # Create an in-memory SQLite database
-        conn = sqlite3.connect(":memory:")
-        
-        for sheet_name, df in sheets_data.items():
-            # Clean column names (remove extra spaces, replace spaces with underscores)
-            df.columns = df.columns.str.strip().str.replace(r'\s+', '_', regex=True)
-            
-            # Write DataFrame to SQLite
-            df.to_sql(sheet_name, conn, index=False, if_exists='replace')
+        conn = get_db_connection()
             
         # Execute the query
         cursor = conn.cursor()

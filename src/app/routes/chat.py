@@ -5,6 +5,7 @@ from typing import Optional
 from utils.response_parser import parse_agent_response
 from services import session_service, runner
 from google.genai import types
+import asyncio
 
 router = APIRouter(prefix="/api", tags=["chat"])
 
@@ -18,8 +19,8 @@ async def chat(
         if not message:
             raise HTTPException(status_code=400, detail="Message is required.")
         
-        from .file_manager import CURRENT_FILE_ID, UPLOAD_DIR
-        if not CURRENT_FILE_ID:
+        from .file_manager import FILE_REGISTRY
+        if not FILE_REGISTRY:
             raise HTTPException(status_code=400, detail="Please upload an Excel/CSV file to start the chat")
         
         user_id = "web_user"
@@ -44,17 +45,12 @@ async def chat(
                     session_id=session_id
                 )
 
-        file_path = None
-        if CURRENT_FILE_ID:
-            for file in UPLOAD_DIR.glob(f"{CURRENT_FILE_ID}.*"):
-                file_path = str(file)
-                break
             
         user_msg = types.UserContent(message)
         selected_agent = None
         
         response_text = ""
-        print(session_id)
+
         async for event in runner.run_async(
             user_id=user_id,
             session_id=session_id,
@@ -111,14 +107,11 @@ async def delete_session(session_id: str):
         
         if not session:
             # Return success anyway (idempotent delete)
-            return JSONResponse(
-                status_code=200,
-                content={
-                    "status": "success",
-                    "message": "Session not found or already deleted",
-                    "session_id": session_id
-                }
-            )
+            return {
+                "status": "success",
+                "message": "Session not found or already deleted",
+                "session_id": session_id
+            }
         
         # Delete the session
         await session_service.delete_session(
@@ -128,14 +121,11 @@ async def delete_session(session_id: str):
         )
         
         
-        return JSONResponse(
-            status_code=200,
-            content={
-                "status": "success",
-                "message": "Session deleted successfully",
-                "session_id": session_id
-            }
-        )
+        return {
+            "status": "success",
+            "message": "Session deleted successfully",
+            "session_id": session_id
+        }
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Session deletion error: {e}")

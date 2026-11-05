@@ -5,7 +5,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from routes import chat_router, schema_router, health_router, file_manager_router, file_manager
+load_dotenv()
+
+from routes import chat_router, health_router, file_manager_router, file_manager
 from config.api_key_config import configure_api_key
 
 # Initialize API key configuration
@@ -29,7 +31,6 @@ app.add_middleware(
 
 # Include routers
 app.include_router(chat_router)
-app.include_router(schema_router)
 app.include_router(file_manager_router)
 app.include_router(health_router)
 
@@ -44,7 +45,7 @@ async def startup_event():
     """Application startup event."""
     
     # Check for existing files on startup
-    file_manager.check_file_on_startup()
+    file_manager.check_files_on_startup()
     
     configure_api_key()
 

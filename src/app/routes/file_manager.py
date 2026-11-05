@@ -1,11 +1,19 @@
 from fastapi import APIRouter, HTTPException, UploadFile, File
 from fastapi.responses import JSONResponse
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, List
+import re
 import uuid
 import json
 
 from utils.excel_schema import generate_schema, get_schema_summary
+from utils.database_manager import (
+    load_file_to_db,
+    remove_table_from_db,
+    rebuild_database,
+    compute_file_hash,
+    get_all_table_names
+)
 
 router = APIRouter(prefix="/api", tags=["file_manager"])
 
@@ -18,12 +26,42 @@ SCHEMA_DIR.mkdir(exist_ok=True)
 METADATA_DIR = Path("metadata")
 METADATA_DIR.mkdir(exist_ok=True)
 
-CURRENT_FILE_ID: Optional[str] = None
-CURRENT_FILENAME: Optional[str] = None
-CURRENT_SCHEMA: Optional[dict] = None
+MAX_FILES = 10
 
-def check_file_on_startup():
-    global CURRENT_FILE_ID, CURRENT_FILENAME, CURRENT_SCHEMA
+FILE_REGISTRY: Dict[str, Dict] = {}
+
+
+def derive_table_name(filename: str, existing_names: List[str]) -> str:
+    base_name = Path(filename).stem
+    table_name = re.sub(r'[^a-zA-Z0-9_]', '_', base_name)
+    table_name = re.sub(r'_+', '_', table_name).strip('_').lower()
+    
+    if table_name and table_name[0].isdigit():
+        table_name = "t_" + table_name
+        
+    if not table_name:
+        table_name = "table"
+        
+    original = table_name
+    counter = 1
+    
+    while table_name in existing_names:
+        table_name = f"{original}_{counter}"
+        counter += 1
+        
+    return table_name
+
+def check_duplicate_content(file_hash: str) -> Optional[str]:
+    for file_id, info in FILE_REGISTRY.items():
+        if info.get("file_hash") == file_hash:
+            return info.get("original_filename")
+        
+    return None
+
+
+
+def check_files_on_startup():
+    global FILE_REGISTRY
     
     # Get all files in upload directory
     files = list(UPLOAD_DIR.glob("*.*"))
@@ -31,70 +69,57 @@ def check_file_on_startup():
     if not files:
         return
     
-    # If multiple files exist, keep only the most recent
-    if len(files) > 1:
-
-        files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
-        latest_file = files[0]
+    for file_path in files:
+        file_id = file_path.stem
+        metadata_file = METADATA_DIR / f"{file_id}.json"
         
-        # Delete older files
-        for f in files[1:]:
-            f.unlink()
-
-    else:
-        latest_file = files[0]
-    
-    # Load file metadata
-    CURRENT_FILE_ID = latest_file.stem
-    
-    
-    metadata_file = METADATA_DIR / f"{CURRENT_FILE_ID}.json"
-    if metadata_file.exists():
+        if not metadata_file.exists():
+            continue
+        
         try:
             with open(metadata_file, "r", encoding="utf-8") as f:
                 metadata = json.load(f)
-                CURRENT_FILENAME = metadata.get("original_filename", latest_file.name)
+            
+            schema_file = SCHEMA_DIR / f"{file_id}.json"
+            schema = None
+            if schema_file.exists():
+                with open(schema_file, "r", encoding="utf-8") as f:
+                        schema = json.load(f)
+                        
+            FILE_REGISTRY[file_id] = {
+                "file_id": file_id,
+                "original_filename": metadata.get("original_filename"),
+                "table_name": metadata.get("table_name"),
+                "file_path": str(file_path),
+                "file_hash": metadata.get("file_hash", ""),
+                "schema": schema,
+                "uploaded_at": metadata.get("uploaded_at")
+            }
         except Exception as e:
-            CURRENT_FILENAME = latest_file.name
-    else:
-        CURRENT_FILENAME = latest_file.name
+            print("Check file startup error: ", e)
     
-    # Load cached schema if exists
-    schema_file = SCHEMA_DIR / f"{CURRENT_FILE_ID}.json"
-    if schema_file.exists():
+    if FILE_REGISTRY:
         try:
-            with open(schema_file, 'r', encoding='utf-8') as f:
-                CURRENT_SCHEMA = json.load(f)
-
+            rebuild_database(FILE_REGISTRY)
         except Exception as e:
-
-            CURRENT_SCHEMA = None
+            print("Check file startup error: ", e)
 
 
 @router.post("/upload-file")
 async def upload_file(file: UploadFile = File(...)):
     try:
+        if len(FILE_REGISTRY) >= MAX_FILES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Maximum {MAX_FILES} allowed. Please delete some files first"
+            )
+        
         allowed_extensions = [".xlsx", ".xls", ".csv"]
         file_ext = Path(file.filename).suffix.lower()
         
         if file_ext not in allowed_extensions:
             raise HTTPException(status_code=400, detail="Invalid file type. Only Excel (.xlsx, .xls) and CSV (.csv) files are allowed.")
         
-        global CURRENT_FILE_ID, CURRENT_FILENAME, CURRENT_SCHEMA
-        
-        old_files = list(UPLOAD_DIR.glob("*.*"))
-        old_schemas = list(SCHEMA_DIR.glob("*.json"))
-        old_metadata = list(METADATA_DIR.glob("*.json"))
-        
-        if old_files or old_schemas or old_metadata:
-            for f in old_files:
-                f.unlink()
-                
-            for s in old_schemas:
-                s.unlink()
-                
-            for m in old_metadata:
-                m.unlink()
                 
         file_id = str(uuid.uuid4())
         file_path = UPLOAD_DIR / f"{file_id}{file_ext}"
@@ -103,9 +128,25 @@ async def upload_file(file: UploadFile = File(...)):
             while chunk := await file.read(8192):
                 f.write(chunk)
                 
+        # Detect duplicate file
+        file_hash = compute_file_hash(str(file_path))
+        dup = check_duplicate_content(file_hash)
+        if dup:
+            file_path.unlink()
+            raise HTTPException(
+                status_code=400,
+                detail=f"This file already exists as: {dup}"
+            )
+            
+        existing = [info["table_name"] for info in FILE_REGISTRY.values()]
+        table_name = derive_table_name(file.filename, existing)
+                
         # Generate schema and schema summary
         schema = generate_schema(str(file_path))
         schema_summary = get_schema_summary(schema)
+        
+        if not schema_summary:
+            raise HTTPException(status_code=500, detail="Failed to generate schema summary")
         
         # Save schema to cache
         schema_file = SCHEMA_DIR / f"{file_id}.json"
@@ -115,22 +156,40 @@ async def upload_file(file: UploadFile = File(...)):
         metadata = {
             "original_filename": file.filename,
             "file_id": file_id,
-            "uploaded_at": str(Path(file_path).stat().st_mtime)
+            "uploaded_at": str(Path(file_path).stat().st_mtime),
+            "table_name": table_name,
+            "file_hash": file_hash
         }
         metadata_file = METADATA_DIR / f"{file_id}.json"
         with open(metadata_file, "w", encoding="utf-8") as f:
             json.dump(metadata, f, indent=2)
             
-        CURRENT_FILE_ID = file_id
-        CURRENT_FILENAME = file.filename
-        CURRENT_SCHEMA = schema
+        try:
+            row_count, col_count = load_file_to_db(str(file_path), table_name)
+        except Exception as e:
+            file_path.unlink()
+            schema_file.unlink()
+            metadata_file.unlink()
+            raise HTTPException(status_code=500, detail=f"Failed to load file: {e}")
+        
+        FILE_REGISTRY[file_id] = {
+            "file_id": file_id,
+            "original_filename": file.filename,
+            "table_name": table_name,
+            "file_path": file_path,
+            "schema": schema,
+            "uploaded_at": metadata["uploaded_at"]
+        }
         
         return {
             "status": "success",
             "file_id": file_id,
             "filename": file.filename,
             "schema": schema,
-            "schema_summary": schema_summary
+            "table_name": table_name,
+            "schema_summary": schema_summary,
+            "total_files": len(FILE_REGISTRY),
+            "max_files": MAX_FILES
         }
         
     except Exception as e:
@@ -139,56 +198,82 @@ async def upload_file(file: UploadFile = File(...)):
     
 @router.get("/file-status")
 async def file_status():
-    global CURRENT_FILE_ID, CURRENT_FILENAME
-    try:
-        if CURRENT_FILE_ID:
-            for file in UPLOAD_DIR.glob(f"{CURRENT_FILE_ID}.*"):
-                return {
-                    "status": "success",
-                    "has_file": True,
-                    "file_id": CURRENT_FILE_ID,
-                    "filename": CURRENT_FILENAME,
-                    "file_path": str(file)
-                }
+    if not FILE_REGISTRY:
+        return {
+            "status": "success",
+            "has_files": False,
+            "files": [],
+            "total_files": 0,
+            "max_files": MAX_FILES
+        }
 
-        return {"status": "success", "has_file": False}
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    files = [
+        {
+            "file_id": info["file_id"],
+            "filename": info["original_filename"],
+            "table_name": info["table_name"],
+            "file_path": info["file_path"],
+            "schema": info.get("schema"),
+            "uploaded_at": info["uploaded_at"],
+        }
+        for info in FILE_REGISTRY.values()
+    ]
     
-@router.delete("/file")
-async def delete_file():
-    global CURRENT_FILE_ID, CURRENT_FILENAME, CURRENT_SCHEMA
-    try:
-        if not CURRENT_FILE_ID:
-            raise HTTPException(status_code=404, detail="No file uploaded")
-
-        deleted_file = CURRENT_FILENAME
-        deleted_id = CURRENT_FILE_ID
+    return {
+        "status": "success",
+        "has_files": True,
+        "files": files,
+        "total_files": len(files),
+        "max_files": MAX_FILES
+    }
+    
+@router.delete("/file/{file_id}")
+async def delete_file(file_id: str):
+    if file_id not in FILE_REGISTRY:
+        raise HTTPException(
+            status_code=404,
+            detail=f"File id: {file_id} not found"
+        )
         
-        # Remove file
-        for f in UPLOAD_DIR.glob(f"{deleted_id}.*"):
-            f.unlink()
+    data = FILE_REGISTRY[file_id]
+    try:
+        table_name = data["table_name"]
+        remove_table_from_db(table_name)
+        
+        path = Path(data["file_path"])
+        if path.exists():
+            path.unlink()
         
         # Remove cached schema
-        schema_file = SCHEMA_DIR / f"{deleted_id}.json"
+        schema_file = SCHEMA_DIR / f"{file_id}.json"
         if schema_file.exists():
             schema_file.unlink()
             
         # Remove metadata
-        metadata_file = METADATA_DIR /f"{deleted_file}.json"
+        metadata_file = METADATA_DIR /f"{file_id}.json"
         if metadata_file.exists():
             metadata_file.unlink()
 
+        del FILE_REGISTRY[file_id]
 
-        # Clear global state
-        CURRENT_FILE_ID = None
-        CURRENT_FILENAME = None
-        CURRENT_SCHEMA = None
-
-        return {"status": "success", "message": "File and schema deleted"}
+        return {"status": "success", "message": "File and schema deleted", "file_id": file_id, "total_files": len(FILE_REGISTRY)}
 
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+@router.delete("/files/all")
+async def delete_all_files():
+    if not FILE_REGISTRY:
+        return {"status": "success", "message": "No files to delete", "deleted_count": 0}
+    
+    ids = list(FILE_REGISTRY.keys())
+    for fid in ids:
+        await delete_file(fid)
+        
+    return {
+        "status": "success",
+        "message": f"Successfully deleted {len(ids)} file(s)",
+        "deleted_count": len(ids)
+    }

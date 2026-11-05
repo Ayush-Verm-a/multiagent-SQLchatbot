@@ -116,12 +116,9 @@ def convert_numpy_types(obj: Any) -> Any:
         
 
 
-def generate_schema(file_path):
+def generate_schema(file_path: str) -> Dict[str, Any]:
     """
-    Generate a schema from an Excel file.
-
-    Args:
-        file_path (str): The path to the Excel file.
+    Generate a schema from a given Excel/CSV file.
     """
     
     try:
@@ -179,9 +176,6 @@ def generate_schema(file_path):
 def get_schema_summary(schema: Dict[str, Any]) -> str:
     """
     Generate a summary string from the schema dictionary.
-    
-    Returns:
-        str: A summary string.
     """
     
     summary = schema.get("summary", {})
