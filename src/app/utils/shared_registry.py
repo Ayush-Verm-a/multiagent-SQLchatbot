@@ -71,7 +71,8 @@ def get_file_registry_from_disk() -> Dict[str, Dict]:
                 "uploaded_at": metadata.get("uploaded_at")
             }
             
-            
+        except json.JSONDecodeError:
+            raise
         except Exception as e:
             raise
     

@@ -149,9 +149,12 @@ async def upload_file(file: UploadFile = File(...)):
             raise HTTPException(status_code=500, detail="Failed to generate schema summary")
         
         # Save schema to cache
+        temp_schema_file = SCHEMA_DIR / f"{file_id}.tmp"
         schema_file = SCHEMA_DIR / f"{file_id}.json"
-        with open(schema_file, "w", encoding="utf-8") as f:
+        with open(temp_schema_file, "w", encoding="utf-8") as f:
             json.dump(schema, f, indent=2)
+            
+        temp_schema_file.replace(schema_file)
             
         metadata = {
             "original_filename": file.filename,
@@ -160,9 +163,12 @@ async def upload_file(file: UploadFile = File(...)):
             "table_name": table_name,
             "file_hash": file_hash
         }
+        temp_metadata_file = METADATA_DIR / f"{file_id}.tmp"
         metadata_file = METADATA_DIR / f"{file_id}.json"
-        with open(metadata_file, "w", encoding="utf-8") as f:
+        with open(temp_metadata_file, "w", encoding="utf-8") as f:
             json.dump(metadata, f, indent=2)
+            
+        temp_metadata_file.replace(metadata_file)
             
         try:
             row_count, col_count = load_file_to_db(str(file_path), table_name)

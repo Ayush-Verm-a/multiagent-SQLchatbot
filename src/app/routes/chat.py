@@ -83,7 +83,8 @@ async def chat(
             "selected_agent": selected_agent,
             "error": parsed["error"],
             "session_id": session_id,
-            "suggestions": parsed.get("suggestions")
+            "suggestions": parsed.get("suggestions"),
+            "structured_response": parsed.get("structured_response")
         }
         
         
