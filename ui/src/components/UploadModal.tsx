@@ -1,11 +1,19 @@
 import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from "react";
-import { useGlobalContext, type ChatItem } from "../context/context";
+import { useGlobalContext } from "../context/context";
 import chatService, { getErrorMessage, newId } from "../services/chatService";
-import { FileIcon, UploadIcon, XIcon } from "./Icons";
-
-type UploadStatus = "idle" | "uploading" | "error";
+import { CheckIcon, FileIcon, UploadIcon, XIcon } from "./Icons";
 
 const ACCEPTED = [".csv", ".xlsx", ".xls"];
+
+type ItemStatus = "queued" | "uploading" | "done" | "error";
+
+type QueueItem = {
+    key: string;
+    file: File;
+    status: ItemStatus;
+    progress: number;
+    error?: string;
+}
 
 interface UploadModalProps {
     onClose: () => void;
@@ -18,16 +26,38 @@ function formatSize(bytes: number) {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function hasAcceptedExtension(name: string) {
+    const dot = name.lastIndexOf(".");
+    return dot >= 0 && ACCEPTED.includes(name.slice(dot).toLowerCase());
+}
+
+function sameFile(a: File, b: File) {
+    return a.name === b.name && a.size === b.size && a.lastModified === b.lastModified;
+}
+
+function itemMeta(item: QueueItem) {
+    switch (item.status) {
+        case "uploading":
+            return item.progress < 100 ? `Uploading… ${item.progress}%` : "Reading schema…";
+        case "done":
+            return "Uploaded";
+        case "error":
+            return item.error ?? "Upload failed";
+        default:
+            return formatSize(item.file.size);
+    }
+}
+
 function UploadModal({ onClose, onUploaded }: UploadModalProps) {
-    const { setFileSchema, setChatList, setSessionId } = useGlobalContext();
-    const [file, setFile] = useState<File | null>(null);
-    const [status, setStatus] = useState<UploadStatus>("idle");
-    const [progress, setProgress] = useState(0);
-    const [error, setError] = useState<string | null>(null);
+    const { files, maxFiles, addFile, setMaxFiles } = useGlobalContext();
+    const [queue, setQueue] = useState<QueueItem[]>([]);
+    const [uploading, setUploading] = useState(false);
     const [dragOver, setDragOver] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
 
-    const uploading = status === "uploading";
+    const remaining = Math.max(0, maxFiles - files.length);
+    const queued = queue.filter((item) => item.status === "queued");
+    const overLimit = queued.length > remaining;
 
     useEffect(() => {
         function handleKey(e: KeyboardEvent) {
@@ -37,60 +67,73 @@ function UploadModal({ onClose, onUploaded }: UploadModalProps) {
         return () => window.removeEventListener("keydown", handleKey);
     }, [onClose, uploading]);
 
-    function pickFile(picked: File | undefined) {
-        if (!picked) return;
-        const ext = picked.name.slice(picked.name.lastIndexOf(".")).toLowerCase();
-        if (!ACCEPTED.includes(ext)) {
-            setFile(null);
-            setStatus("error");
-            setError("Only .csv, .xlsx and .xls files are supported.");
-            return;
-        }
-        setFile(picked);
-        setStatus("idle");
-        setError(null);
+    function patchItem(key: string, patch: Partial<QueueItem>) {
+        setQueue((prev) => prev.map((item) => (item.key === key ? { ...item, ...patch } : item)));
+    }
+
+    function addFiles(picked: FileList | null) {
+        if (!picked || picked.length === 0) return;
+        const incoming = Array.from(picked);
+        setQueue((prev) => {
+            const next = [...prev];
+            for (const file of incoming) {
+                if (next.some((item) => sameFile(item.file, file))) continue;
+                const valid = hasAcceptedExtension(file.name);
+                next.push({
+                    key: newId(),
+                    file,
+                    status: valid ? "queued" : "error",
+                    progress: 0,
+                    error: valid ? undefined : "Only .csv, .xlsx and .xls files are supported.",
+                });
+            }
+            return next;
+        });
+    }
+
+    function removeItem(key: string) {
+        setQueue((prev) => prev.filter((item) => item.key !== key));
     }
 
     function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
-        pickFile(e.target.files?.[0]);
+        addFiles(e.target.files);
         e.target.value = "";
     }
 
     function handleDrop(e: DragEvent<HTMLDivElement>) {
         e.preventDefault();
         setDragOver(false);
-        if (!uploading) pickFile(e.dataTransfer.files[0]);
+        if (!uploading) addFiles(e.dataTransfer.files);
     }
 
-    async function handleFileUpload() {
-        if (!file) return;
+    async function handleUpload() {
+        if (queued.length === 0 || overLimit) return;
+        setUploading(true);
 
-        setStatus("uploading");
-        setProgress(0);
-        setError(null);
+        // One request per file, in order, so the server's duplicate and table-name checks see each previous file
+        let failed = 0;
+        for (const item of queued) {
+            patchItem(item.key, { status: "uploading", progress: 0, error: undefined });
+            try {
+                const result = await chatService.uploadFile(item.file, (progress) => patchItem(item.key, { progress }));
+                addFile(result.file);
+                setMaxFiles(result.maxFiles);
+                patchItem(item.key, { status: "done", progress: 100 });
+            } catch (err) {
+                failed += 1;
+                patchItem(item.key, { status: "error", error: getErrorMessage(err) });
+            }
+        }
 
-        try {
-            const fileSchema = await chatService.uploadFile(file, setProgress);
-            setFileSchema(fileSchema);
-            // A new file means a new dataset, so start a fresh agent session
-            setSessionId(null);
-
-            const chatItem: ChatItem = {
-                id: newId(),
-                chatSender: "bot",
-                msgType: "greeting_response",
-                chatMsg: `${fileSchema.fileName} uploaded successfully! Ask me anything about it.`,
-            };
-            setChatList((prev) => [...prev, chatItem]);
-
+        setUploading(false);
+        // Keep the modal open on failures so the reasons stay visible
+        if (failed === 0) {
             onUploaded();
             onClose();
-        } catch (err) {
-            setStatus("error");
-            setProgress(0);
-            setError(getErrorMessage(err));
         }
     }
+
+    const uploadLabel = queued.length > 1 ? `Upload ${queued.length} files` : "Upload";
 
     return (
         <div className="overlay" onMouseDown={() => !uploading && onClose()}>
@@ -102,7 +145,7 @@ function UploadModal({ onClose, onUploaded }: UploadModalProps) {
                 onMouseDown={(e) => e.stopPropagation()}
             >
                 <div className="modal__header">
-                    <h2 id="upload-title">Upload a data file</h2>
+                    <h2 id="upload-title">Upload data files</h2>
                     <button className="icon-btn" onClick={onClose} disabled={uploading} aria-label="Close">
                         <XIcon />
                     </button>
@@ -115,7 +158,7 @@ function UploadModal({ onClose, onUploaded }: UploadModalProps) {
                     onDrop={handleDrop}
                 >
                     <UploadIcon />
-                    <p>Drop a .csv or .xlsx file here</p>
+                    <p>Drop .csv or .xlsx files here</p>
                     <span className="dropzone__or">or</span>
                     <button className="btn btn--dark" onClick={() => inputRef.current?.click()} disabled={uploading}>
                         Browse files
@@ -125,35 +168,58 @@ function UploadModal({ onClose, onUploaded }: UploadModalProps) {
                         type="file"
                         accept={ACCEPTED.join(",")}
                         onChange={handleFileChange}
+                        multiple
                         hidden
                     />
                 </div>
 
-                {file && (
-                    <div className="file-card file-card--selected">
-                        <span className="file-card__icon"><FileIcon /></span>
-                        <div className="file-card__text">
-                            <span className="file-card__name">{file.name}</span>
-                            <span className="file-card__meta">{formatSize(file.size)}</span>
-                        </div>
-                    </div>
+                <p className="modal__hint">
+                    {files.length} of {maxFiles} files used · {remaining} {remaining === 1 ? "slot" : "slots"} left.
+                    New uploads are added alongside your existing files.
+                </p>
+
+                {queue.length > 0 && (
+                    <ul className="upload-list">
+                        {queue.map((item) => (
+                            <li key={item.key} className={`upload-item upload-item--${item.status}`}>
+                                <span className="file-card__icon">
+                                    {item.status === "done" ? <CheckIcon /> : <FileIcon />}
+                                </span>
+                                <div className="file-card__text">
+                                    <span className="file-card__name" title={item.file.name}>{item.file.name}</span>
+                                    <span className="upload-item__meta">{itemMeta(item)}</span>
+                                    {item.status === "uploading" && (
+                                        <div className="progress__bar"><div style={{ width: `${item.progress}%` }} /></div>
+                                    )}
+                                </div>
+                                {item.status !== "uploading" && (
+                                    <button
+                                        className="icon-btn icon-btn--sm"
+                                        onClick={() => removeItem(item.key)}
+                                        disabled={uploading}
+                                        aria-label={`Remove ${item.file.name}`}
+                                        title="Remove"
+                                    >
+                                        <XIcon />
+                                    </button>
+                                )}
+                            </li>
+                        ))}
+                    </ul>
                 )}
 
-                {uploading && (
-                    <div className="progress">
-                        <div className="progress__bar"><div style={{ width: `${progress}%` }} /></div>
-                        <span className="progress__label">
-                            {progress === 0 ? "Uploading…" : progress < 100 ? `Uploading… ${progress}%` : "Reading schema…"}
-                        </span>
-                    </div>
+                {overLimit && (
+                    <p className="notice notice--error">
+                        You can add {remaining} more {remaining === 1 ? "file" : "files"}. Remove {queued.length - remaining} from the list, or delete files from the sidebar first.
+                    </p>
                 )}
-
-                {error && <p className="notice notice--error">{error}</p>}
 
                 <div className="modal__actions">
-                    <button className="btn btn--outline" onClick={onClose} disabled={uploading}>Cancel</button>
-                    <button className="btn btn--accent" onClick={handleFileUpload} disabled={!file || uploading}>
-                        {uploading ? "Uploading…" : "Upload"}
+                    <button className="btn btn--outline" onClick={onClose} disabled={uploading}>
+                        {queue.some((item) => item.status === "done") ? "Done" : "Cancel"}
+                    </button>
+                    <button className="btn btn--accent" onClick={handleUpload} disabled={queued.length === 0 || overLimit || uploading}>
+                        {uploading ? "Uploading…" : uploadLabel}
                     </button>
                 </div>
             </div>
