@@ -9,6 +9,7 @@ load_dotenv()
 
 from routes import chat_router, health_router, file_manager_router, file_manager
 from config.api_key_config import configure_api_key
+from utils.paths import UPLOAD_DIR, ensure_data_dirs
 
 # Initialize API key configuration
 configure_api_key()
@@ -35,9 +36,8 @@ app.include_router(file_manager_router)
 app.include_router(health_router)
 
 # Configure file uploads directory
-UPLOADS_DIR = Path("uploads")
-UPLOADS_DIR.mkdir(exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
+ensure_data_dirs()
+app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 
 
 @app.on_event("startup")

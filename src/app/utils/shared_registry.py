@@ -7,13 +7,9 @@ the in-memory FILE_REGISTRY from the main FastAPI application.
 """
 
 import json
-from pathlib import Path
 from typing import Dict
 
-# Directory paths (same as file_manager.py)
-UPLOAD_DIR = Path("uploads")
-SCHEMA_DIR = Path("schemas")
-METADATA_DIR = Path("metadata")
+from .paths import UPLOAD_DIR, SCHEMA_DIR, METADATA_DIR, ensure_data_dirs
 
 
 def get_file_registry_from_disk() -> Dict[str, Dict]:
@@ -30,9 +26,7 @@ def get_file_registry_from_disk() -> Dict[str, Dict]:
     file_registry = {}
     
     # Ensure directories exist
-    UPLOAD_DIR.mkdir(exist_ok=True)
-    SCHEMA_DIR.mkdir(exist_ok=True)
-    METADATA_DIR.mkdir(exist_ok=True)
+    ensure_data_dirs()
     
     # Find all uploaded files
     files = list(UPLOAD_DIR.glob("*.*"))

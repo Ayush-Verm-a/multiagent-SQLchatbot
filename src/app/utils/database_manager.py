@@ -4,11 +4,9 @@ from pathlib import Path
 from typing import Optional, Dict, List, Tuple
 
 from .schema_generator import read_excel_file
+from .paths import DB_FILE, ensure_data_dirs
 
-DB_DIR = Path("database")
-DB_FILE = DB_DIR / "chatbot.db"
-
-DB_DIR.mkdir(exist_ok=True)
+ensure_data_dirs()
 
 def get_db_connection() -> sqlite3.Connection:
     try:

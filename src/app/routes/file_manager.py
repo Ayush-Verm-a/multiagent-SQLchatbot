@@ -14,17 +14,11 @@ from utils.database_manager import (
     compute_file_hash,
     get_all_table_names
 )
+from utils.paths import UPLOAD_DIR, SCHEMA_DIR, METADATA_DIR, ensure_data_dirs
 
 router = APIRouter(prefix="/api", tags=["file_manager"])
 
-UPLOAD_DIR = Path("uploads")
-UPLOAD_DIR.mkdir(exist_ok=True)
-
-SCHEMA_DIR = Path("schemas")
-SCHEMA_DIR.mkdir(exist_ok=True)
-
-METADATA_DIR = Path("metadata")
-METADATA_DIR.mkdir(exist_ok=True)
+ensure_data_dirs()
 
 MAX_FILES = 10
 
